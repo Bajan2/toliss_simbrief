@@ -23,31 +23,14 @@ SOFTWARE.
 */
 
 #include <stdlib.h>
-#include <string.h>
-#include <Windows.h>
-
-#include "tlsb.h"
+#include <stdio.h>
 
 int
 get_clipboard(char *buffer, int buflen)
 {
-    int ret = 0;
-    
-	if (TRUE == OpenClipboard(NULL)) {
-		HANDLE hData = GetClipboardData(CF_TEXT);
-		if (NULL != hData) {
-            char *pszText = GlobalLock(hData);
-			if (NULL != pszText) {
-                strncpy(buffer, GlobalLock(hData), buflen);
-                buffer[buflen - 1] = '\0';
-                ret = 1;
-			}
-
-			GlobalUnlock(hData);
-		}
-
-		CloseClipboard();
-	}
-
-	return ret;
+  FILE *fp = popen("xclip -o", "r");
+  if (fp == NULL)  return 0;
+  fgets(buffer, buflen, fp);
+  pclose(fp);
+	return 1;
 }

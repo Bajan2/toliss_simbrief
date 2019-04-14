@@ -51,8 +51,6 @@ static char xpdir[512];
 static const char *psep;
 static char fms_path[512];
 
-char tlsb_tmp_fn[512];
-
 static XPLMMenuID tlsb_menu;
 
 #define MSG_GET_OFP (xpMsg_UserStart + 1)
@@ -311,7 +309,7 @@ getofp_widget_cb(XPWidgetMessage msg, XPWidgetID widget_id, intptr_t param1, int
         } else {
             time_t tg = atol(ofp_info.time_generated);
             struct tm tm;
-            gmtime_s(&tm, &tg);
+            gmtime_r(&tg, &tm);
             char line[100];
             /* strftime does not work for whatever reasons */
             sprintf(line, "OFP generated at %4d-%02d-%02d %02d:%02d:%02d UTC",
@@ -550,9 +548,6 @@ XPluginStart(char *out_name, char *out_sig, char *out_desc)
     XPLMGetSystemPath(xpdir);
     snprintf(fms_path, sizeof(fms_path), "%s%sOutput%sFMS plans%s",
              xpdir, psep, psep, psep);
-
-    snprintf(tlsb_tmp_fn, sizeof(tlsb_tmp_fn), "%s%sOutput%stlsb_download.tmp",
-             xpdir, psep, psep);
 
     /* load preferences */
     XPLMGetPrefsPath(pref_path);

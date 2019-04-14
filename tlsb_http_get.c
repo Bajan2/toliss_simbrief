@@ -24,133 +24,39 @@ SOFTWARE.
 
 #include <stdlib.h>
 #include <stdio.h>
-
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#include <WinHttp.h>
+#include <curl/curl.h>
 
 #include "tlsb.h"
 
+static size_t write_data(void *ptr, size_t size, size_t nmemb, void *stream)
+{
+  size_t written = fwrite(ptr, size, nmemb, (FILE *)stream);
+  return written;
+}
+
 int tlsb_http_get(const char *url, FILE *f, int *ret_len)
 {
-    DWORD dwSize = 0;
-    DWORD dwDownloaded = 0;
-    BOOL  bResults = FALSE;
-    HINTERNET  hSession = NULL,
-               hConnect = NULL,
-               hRequest = NULL;
-
-    int result = 0;
-    if (ret_len)
-        *ret_len = 0;
-
-    int url_len = strlen(url);
-    WCHAR *url_wc = alloca((url_len + 1) * sizeof(WCHAR));
-    WCHAR *host_wc = alloca((url_len + 1) * sizeof(WCHAR));
-    WCHAR *path_wc = alloca((url_len + 1) * sizeof(WCHAR));
-
-    mbstowcs_s(NULL, url_wc, url_len + 1, url, _TRUNCATE);
-
-    URL_COMPONENTS urlComp;
-    memset(&urlComp, 0, sizeof(urlComp));
-    urlComp.dwStructSize = sizeof(urlComp);
-    
-    urlComp.lpszHostName = host_wc;
-    urlComp.dwHostNameLength  = (DWORD)(url_len + 1);
-    
-    urlComp.lpszUrlPath = path_wc;
-    urlComp.dwUrlPathLength   = (DWORD)(url_len + 1);
-
-    // Crack the url_wc.
-    if (!WinHttpCrackUrl(url_wc, 0, 0, &urlComp)) {
-        log_msg("Error %u in WinHttpCrackUrl.", GetLastError());
-        goto error_out;
-    }
-
-    char buffer[16 * 1024];
-
-    // Use WinHttpOpen to obtain a session handle.
-    hSession = WinHttpOpen( L"toliss_sb",
-            WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
-            WINHTTP_NO_PROXY_NAME,
-            WINHTTP_NO_PROXY_BYPASS, 0 );
-
-    if (NULL == hSession) {
-        log_msg("Can't open HTTP session");
-        goto error_out;
-    }
-
-    if (! WinHttpSetTimeouts(hSession, 5000, 5000, 5000, 5000)) {
-        log_msg("can't set timeouts");
-        goto error_out;
-    }
-    
-    hConnect = WinHttpConnect(hSession, host_wc, urlComp.nPort, 0);
-    if (NULL == hConnect) {
-        log_msg("Can't open HTTP session");
-        goto error_out;
-    }
-
-    hRequest = WinHttpOpenRequest(hConnect, L"GET", path_wc, NULL, WINHTTP_NO_REFERER,
-                                  WINHTTP_DEFAULT_ACCEPT_TYPES,
-                                  (urlComp.nScheme == INTERNET_SCHEME_HTTPS) ? WINHTTP_FLAG_SECURE : 0);
-    if (NULL == hRequest) {
-        log_msg("Can't open HTTP request: %u", GetLastError());
-        goto error_out;
-    }
-
-    bResults = WinHttpSendRequest(hRequest, WINHTTP_NO_ADDITIONAL_HEADERS, 0,
-                                  WINHTTP_NO_REQUEST_DATA, 0, 0, 0);
-    if (! bResults) {
-        log_msg("Can't send HTTP request: %u", GetLastError());
-        goto error_out;
-    }
-
-    bResults = WinHttpReceiveResponse(hRequest, NULL);
-    if (! bResults) {
-        log_msg("Can't receive response", GetLastError());
-        goto error_out;
-    }
-
-    while (1) {
-        DWORD res = WinHttpQueryDataAvailable(hRequest, &dwSize);
-        if (!res) {
-            log_msg("%d, Error %u in WinHttpQueryDataAvailable.", res, GetLastError());
-            goto error_out;
-        }
-
-        // log_msg("dwSize %d", dwSize);
-        if (0 == dwSize) {
-            break;
-        }
-
-        while (dwSize > 0) {
-            int get_len = (dwSize < sizeof(buffer) ? dwSize : sizeof(buffer));
-            
-            bResults = WinHttpReadData(hRequest, buffer, get_len, &dwDownloaded);
-            if (! bResults){
-               log_msg("Error %u in WinHttpReadData.", GetLastError());
-               goto error_out;
-            }
-
-            fwrite(buffer, 1, dwDownloaded, f);
-            if (ferror(f)) {
-                log_msg("error wrinting file");
-                goto error_out;
-            }
-
-            dwSize -= dwDownloaded;
-            if (ret_len)
-                *ret_len += dwDownloaded;
-        }
-    }
-
-    result = 1;
-
-error_out:
-    // Close any open handles.
-    if (hRequest) WinHttpCloseHandle(hRequest);
-    if (hConnect) WinHttpCloseHandle(hConnect);
-    if (hSession) WinHttpCloseHandle(hSession);
-    return result;
+  CURL *curl;
+  CURLcode res;
+  curl_global_init(CURL_GLOBAL_ALL);
+  curl = curl_easy_init();
+  if(!curl) return 0;
+  curl_easy_setopt(curl, CURLOPT_URL, url);
+  curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L);
+  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_data);
+  curl_easy_setopt(curl, CURLOPT_WRITEDATA, f);
+  curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
+  curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+  res = curl_easy_perform(curl);
+    /* Check for errors */
+  if(res != CURLE_OK) {
+      fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+      return 0;
+  }
+  curl_off_t dl;
+  res = curl_easy_getinfo(curl, CURLINFO_SIZE_DOWNLOAD_T, &dl);
+  if(res == CURLE_OK && ret_len) *ret_len = (int)dl;
+  curl_easy_cleanup(curl);
+  curl_global_cleanup();
+  return 1;
 }

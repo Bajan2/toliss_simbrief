@@ -99,7 +99,7 @@ tlsb_ofp_get_parse(const char *pilot_id, ofp_info_t *ofp_info)
 {
     char *ofp = NULL;
     FILE *f = NULL;
-    
+
     memset(ofp_info, 0, sizeof(*ofp_info));
     int ofp_len;
 
@@ -107,9 +107,8 @@ tlsb_ofp_get_parse(const char *pilot_id, ofp_info_t *ofp_info)
     sprintf(url, "https://www.simbrief.com/api/xml.fetcher.php?userid=%s", pilot_id);
     // log_msg(url);
 
-    f = fopen(tlsb_tmp_fn, "wb+");
-    // is unrealiable on windows FILE *f = tmpfile();
- 
+    f = tmpfile();
+
     if (NULL == f) {
         log_msg("Can't create temporary file");
         return 0;
@@ -123,7 +122,7 @@ tlsb_ofp_get_parse(const char *pilot_id, ofp_info_t *ofp_info)
     }
 
     log_msg("got ofp %d bytes", ofp_len);
-    rewind(f);
+   rewind(f);
 
     if (NULL == (ofp = malloc(ofp_len+1))) {    /* + space for a terminating 0 */
         log_msg("can't malloc OFP xml buffer");
@@ -196,6 +195,5 @@ tlsb_ofp_get_parse(const char *pilot_id, ofp_info_t *ofp_info)
 out:
     if (ofp) free(ofp);
     if (f) fclose(f);
-    _unlink(tlsb_tmp_fn);   /* unchecked */
     return res;
 }
